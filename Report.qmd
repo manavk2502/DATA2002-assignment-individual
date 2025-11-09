@@ -1,0 +1,230 @@
+---
+title: "Executive Summary Report – Predicting New York City Housing Prices"
+author: "Manav Khemchandani"
+date: "09-11-2025"
+format:
+  pdf:
+    documentclass: article
+    classoption: a4paper
+    geometry:
+      - top=2cm
+      - bottom=2.2cm
+      - left=2cm
+      - right=2cm
+    fontsize: 8.5pt
+    linestretch: 1.15
+    fig-pos: "H"
+    tbl-pos: "H"
+    fig-width: 4
+    fig-height: 2.5
+    out-width: "58%"
+    include-in-header: 
+      text: |
+        \usepackage{titlesec}
+        \titleformat{\section}{\large\bfseries}{\thesection}{1em}{}
+        \titlespacing*{\section}{0pt}{10pt}{5pt}
+        \usepackage{float}
+        \usepackage{caption}
+        \captionsetup{font=small,skip=4pt}
+        \usepackage{amsmath}
+        \usepackage{parskip}
+        \setlength{\parindent}{0pt}
+        \setlength{\parskip}{6pt}
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE)
+library(tidyverse)  
+library(janitor)     
+library(kableExtra)
+library(ggplot2)
+library(patchwork)
+library(Hmisc)    
+library(ggcorrplot)
+```
+
+```{r}
+housing_data <- read_csv("/Users/royk/Documents/DATA2002/Individual/cleaned_housing_data.csv")
+housing_cleaned <- housing_data %>% distinct()
+
+duplicates_removed <- nrow(housing_data) - nrow(housing_cleaned)
+
+housing_cleaned <- housing_cleaned %>%
+  clean_names()
+
+# Converting to appropriate types, including the 17th variable 'test'
+housing_cleaned <- housing_cleaned %>%
+  mutate(
+    waterfront = as.factor(waterfront),
+    new_construct = as.factor(new_construct),
+    central_air = as.factor(central_air),
+    fuel_type = as.factor(fuel_type),
+    heat_type = as.factor(heat_type),
+    sewer_type = as.factor(sewer_type),
+    test = as.factor(test),  
+    price = as.numeric(price),
+    lot_size = as.numeric(lot_size),
+    land_value = as.numeric(land_value),
+    living_area = as.numeric(living_area),
+    pct_college = as.numeric(pct_college),
+    age = as.numeric(age),
+    bedrooms = as.numeric(bedrooms),
+    fireplaces = as.numeric(fireplaces),
+    bathrooms = as.numeric(bathrooms),
+    rooms = as.numeric(rooms)
+  ) %>%
+  filter(heat_type != "None") %>%
+  filter(!is.na(price) & !is.na(lot_size) & !is.na(land_value) & !is.na(living_area) &
+         !is.na(bedrooms) & !is.na(bathrooms) & !is.na(rooms) & !is.na(fireplaces) & !is.na(test))
+```
+
+```{r}
+# Load data
+housing <- housing_cleaned
+
+# --- 1. Quick correlations ---
+#housing %>%
+  #select(price, lot_size, land_value, living_area, bedrooms) %>%
+  #cor(use = "complete.obs") %>%
+  #round(2)
+
+# Choosing the colour palette 
+colour_palette <- c("#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#D55E00", "#CC79A7", "#999999")
+
+# Set a consistent theme
+theme_report <- theme_minimal(base_size = 12) +
+  theme(
+    panel.grid.minor = element_blank(),
+    panel.grid.major = element_line(linewidth = 0.3, colour = "#D6D6D6"),
+    axis.title = element_text(face = "bold"),
+    plot.title = element_text(face = "bold", size = 14, margin = margin(b=6)),
+    plot.subtitle = element_text(colour = "grey25", margin = margin(b = 8)),
+    legend.position = "top",
+    legend.title = element_text(face = "bold")
+  )
+theme_set(theme_report)
+
+```
+
+## Abstract
+
+We investigated drivers of housing prices in New York City using multiple linear regression on a dataset of **1,730 properties** with **17 variables**. The final selected model is:
+
+Price = 1346.1 + 69205.5( Living Area) + 9133.5 (Land Value) + 27682.6 (Bathrooms) +123373.7 (Waterfront) +7369.6 (Lot Size)
+This multivariate linear model explains **63.5%** of the variation in price (**R² = 0.635**), substantially outperforming the log-linear alternative (**R² = 0.563**). The five strongest predictors were **Living Area**, **Land Value**, **Bathrooms**, **Waterfront**, and **Lot Size** — with waterfront properties commanding an average **\$123,374** premium. These results provide clear, actionable insights for valuation and investment in NYC’s high-value real estate market.
+
+## 1. Introduction
+
+In New York City’s competitive housing market (median price = \$189,900), identifying key value drivers is vital for buyers, sellers, and policymakers. This study asks: (1) Which attributes best predict price? (2) How large is the waterfront premium, and does a linear model outperform a log-linear one?
+
+## 2. Data set
+
+The dataset covers **1,730 properties** and **17 variables**, including price, lot size, waterfront status, age, land value, and construction features. Prices range from **\$5,000 to \$775,000** (mean = \$212,045). Only **15 properties (0.87%)** are waterfront, underscoring its rarity and value.
+
+## 3. Analysis
+
+Exploratory analysis used scatterplots and boxplots to examine price relationships with key variables. Living area, land value, and bathrooms showed strong positive trends, while bedrooms and rooms were highly collinear and redundant. The waterfront boxplot revealed the largest raw price gap. Stepwise AIC selection removed insignificant predictors and retained five: living area, land value, bathrooms, waterfront, and lot size.
+
+```{r}
+df <- readr::read_csv("/Users/royk/Documents/DATA2002/Individual/cleaned_housing_data.csv")
+df_mutated <- na.omit(df)
+
+dummy_fuel <- model.matrix(~ Fuel.Type - 1, data=df_mutated)
+dummy_heat <- model.matrix(~ Heat.Type - 1, data=df_mutated)
+dummy_sewer <- model.matrix(~ Sewer.Type - 1, data=df_mutated)
+
+df_encoded <- cbind(
+  df_mutated[, sapply(df_mutated, is.numeric)],
+  dummy_fuel, dummy_heat, dummy_sewer
+)
+```
+
+```{r}
+cor_mat = cor(df_encoded)
+rcorr_mat = rcorr(as.matrix(df_encoded))
+
+r_mat = rcorr_mat$r
+r_mat[lower.tri(r_mat, diag=TRUE)] <- NA
+df_r <- as.data.frame(as.table(r_mat))
+
+p_mat = rcorr_mat$P
+p_mat[lower.tri(p_mat, diag=TRUE)] <- NA
+df_p <- as.data.frame(as.table(p_mat))
+
+
+```
+
+```{r qq-comparison, fig.cap="Q-Q plots before and after log transformation", fig.width=7, fig.height= 2.9, out.width="75%"}
+df_encoded$log.Price <- log(df_encoded$Price)
+model_assump <- lm(Price ~ Living.Area + Bathrooms, data=df_encoded)
+qq <- df_encoded |> ggplot(aes(sample=resid(model_assump))) +
+  geom_qq(color="#E69F00", alpha = 0.6) +
+  geom_qq_line(color="#999999") +
+  labs(title="QQPlot of Original Model", x="Theoretical", y="Sample") +
+  theme_bw()
+
+model_assump_log <- lm(log.Price ~ Living.Area + Bathrooms, data=df_encoded)
+qq_log <- df_encoded |> ggplot(aes(sample=resid(model_assump_log))) +
+  geom_qq(color="#E69F00", alpha = 0.6) +
+  geom_qq_line(color="#999999") +
+  labs(title="QQPlot of Log-Adjusted Model", x="Theoretical", y="Sample") +
+  theme_bw()
+
+qq | qq_log +
+  theme(plot.title = element_text(size = 10))   
+```
+
+**Assumption checks** confirmed linearity, homoscedasticity, and independence via residual-vs-fitted and scale-location plots. The Q-Q plot showed moderate right-skew in the original model, dramatically improved by log(Price). However, the log version reduced R² and made the waterfront premium harder to interpret in dollars. After removing three influential outliers, the linear model satisfied all assumptions and was retained for superior fit and practical usability.
+
+## 4. Results
+
+The final linear model answers the central question: **what truly drives NYC housing prices?** **Waterfront status** is the single most valuable feature: holding all else equal, a waterfront property sells for **+\$123,374** more than a comparable non-waterfront home (p \< 0.001). This confirms that in New York City, **location remains the ultimate luxury**. Each additional **1,000 sq ft** of living area adds **+\$69,205**, while **\$10,000** higher land value contributes **+\$9,133**. An extra bathroom increases price by **+\$27,683**, and each additional acre of lot size adds **+\$7,369**.
+
+```{r}
+latest <- read_csv("/Users/royk/Documents/DATA2002/Individual/cleaned_housing_data.csv")
+
+```
+
+```{r}
+lmt <- lm(Price ~ Living.Area + Land.Value + Bathrooms + Waterfront + Lot.Size, 
+          data = latest)
+
+latest$Predicted <- predict(lmt)
+
+rsq <- cor(latest$Price, latest$Predicted, use = "complete.obs")^2
+
+latest$LogPrice <- log(latest$Price)
+
+lgt <- lm(LogPrice ~ Living.Area + Land.Value + Bathrooms + Waterfront + Lot.Size, 
+          data = latest)
+
+latest$lgtPredict <- predict(lgt)
+
+lgtrsq <- cor(latest$LogPrice, latest$lgtPredict, use = "complete.obs")^2
+
+int <- coef(lmt)[1]
+lar <- coef(lmt)[2] * 1000      # effect of 1000 extra sq ft
+lvl <- coef(lmt)[3] * 10000     # effect of $10,000 more land value
+bth <- coef(lmt)[4]
+wft <- coef(lmt)[5]
+lsz <- coef(lmt)[6]
+
+
+```
+
+```{r}
+ggplot(latest, aes(x = Predicted, y = Price)) +
+  geom_point(alpha = 0.5, color = "#009E73", pch=20) +
+  geom_abline(intercept = 0, slope = 1, color= "#1D3557") +
+  labs(title = "Actual vs Predicted House Prices",
+       x = "Predicted Price", y = "Actual Price") +
+  theme_minimal()
+```
+
+The model performs excellently: R² = 0.6354 — explains 63.5% of price variation — Adjusted R² = 0.634 — no penalty for five predictors - All five coefficients significant at p \< 0.001 - Actual vs predicted plot shows tight clustering along the 45° line with no systematic bias Compared to the log-linear alternative (R² = 0.5627), the chosen model is **7 percentage points stronger** and provides **direct dollar interpretations** — critical for buyers, sellers, and real estate agents.
+
+`Price = 1346.1 + 69205.5(Living Area) + 9133.5(Land Value) + 27682.6(Bathrooms) + 123373.7(Waterfront) + 7369.6(Lot Size)`
+
+## 5. **Discussion and conclusion**
+
+The analysis is limited by the small dataset, which may reduce generalizability. Future research with larger, more diverse samples could improve accuracy. Despite this, the model effectively identifies key price drivers—living area, land value, bathrooms, lot size, and waterfront—providing clear, interpretable insights for property valuation and investment.
