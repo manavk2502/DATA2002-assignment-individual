@@ -1,0 +1,1048 @@
+---
+title: ""
+pagetitle: "New York Housing"
+format:
+  revealjs:
+    slide-number: true
+    auto-slide: 20000
+    loop: true
+    fontsize: 1.2em
+    code-fold: true
+    transition: fade
+    embed-resources: true
+    ontext:
+        fontsize: "30pt"
+execute:
+  warning: false
+  message: false
+  echo: false
+---
+
+:::::: {style="height:100vh; display:flex; flex-direction:column; justify-content:space-between; align-items:center; text-align:center;"}
+<!-- Header -->
+
+::: {style="margin-top:10px; font-size:1.1rem; font-weight:500;"}
+```         
+DATA2002 • Semester 2 • Manav Khemchandani
+```
+:::
+
+<!-- Title block -->
+
+<div>
+
+<h1 style="font-size:3.5rem; margin-bottom:0.5rem;">
+
+The Price of a Dream
+
+</h1>
+
+<h3 style="font-weight:400; font-size:1.5rem; font-style:italic; margin-top:0;">
+
+Exploring what drives the cost of a dream house in the city of dreams.
+
+</h3>
+
+<h4 style="margin-top:1rem; font-weight:500;">
+
+
+
+</h4>
+
+</div>
+
+<!-- Bottom image -->
+
+::: {style="width:160%; margin-bottom:-40px;"}
+<img src="Fig1.png" alt="City skyline" style="width:300%; object-fit:width; display:block;"/>
+:::
+::::::
+
+```{r setup, include=FALSE}
+options(scipen = 999)
+
+library(tidyverse)
+library(ggplot2)
+library(vtable)
+library(modelsummary)
+library(stargazer)
+library(broom)
+library(scales)
+library(dplyr)
+library(patchwork)
+library(ggpubr)
+library(janitor)
+library(readxl)
+library(knitr)
+library(psych)
+library(corrplot)
+library(Hmisc)
+library(car)
+library(interactions)
+library(lm.beta)
+library(colorblindr)
+library(tibble)
+```
+
+
+```{r}
+housing_data <- read_csv("/Users/royk/Documents/DATA2002/Individual/cleaned_housing_data.csv")
+housing_cleaned <- housing_data %>% distinct()
+
+duplicates_removed <- nrow(housing_data) - nrow(housing_cleaned)
+
+housing_cleaned <- housing_cleaned %>%
+  clean_names()
+
+# Converting to appropriate types, including the 17th variable 'test'
+housing_cleaned <- housing_cleaned %>%
+  mutate(
+    waterfront = as.factor(waterfront),
+    new_construct = as.factor(new_construct),
+    central_air = as.factor(central_air),
+    fuel_type = as.factor(fuel_type),
+    heat_type = as.factor(heat_type),
+    sewer_type = as.factor(sewer_type),
+    test = as.factor(test),  
+    price = as.numeric(price),
+    lot_size = as.numeric(lot_size),
+    land_value = as.numeric(land_value),
+    living_area = as.numeric(living_area),
+    pct_college = as.numeric(pct_college),
+    age = as.numeric(age),
+    bedrooms = as.numeric(bedrooms),
+    fireplaces = as.numeric(fireplaces),
+    bathrooms = as.numeric(bathrooms),
+    rooms = as.numeric(rooms)
+  ) %>%
+  filter(heat_type != "None") %>%
+  filter(!is.na(price) & !is.na(lot_size) & !is.na(land_value) & !is.na(living_area) &
+         !is.na(bedrooms) & !is.na(bathrooms) & !is.na(rooms) & !is.na(fireplaces) & !is.na(test))
+
+```
+
+## <span style="font-size:3.5rem;">Introduction</span>
+
+::: columns
+
+::: column
+<div style="background-color:#f9f9f9; padding:1rem 1.25rem; border-radius:10px; box-shadow:0 0 8px rgba(0,0,0,0.05); margin-bottom:1rem;">
+  <div style="font-weight:700; color:#1D3557; font-size:1.2rem; margin-bottom:0.3rem;">🏠 Property Size & Land Characteristics</div>
+  <p style="margin-top:0; font-size:0.95rem; line-height:1.4;">
+    <strong>Focus:</strong> Do bigger houses and lots actually mean higher prices?
+  </p>
+  <ul style="margin-top:0.2rem; line-height:1.5; font-size:0.95rem;">
+    <li><b>Lot.Size</b> — land parcel size</li>
+    <li><b>Land.Value</b> — value of land alone</li>
+    <li><b>Living.Area</b> — square footage of living space</li>
+    <li><b>Bedrooms</b> — number of bedrooms</li>
+  </ul>
+</div>
+
+<div style="background-color:#f9f9f9; padding:1rem 1.25rem; border-radius:10px; box-shadow:0 0 8px rgba(0,0,0,0.05);">
+  <div style="font-weight:700; color:#1D3557; font-size:1.2rem; margin-bottom:0.3rem;">✨ Quality, Features & Amenities</div>
+  <p style="margin-top:0; font-size:0.95rem; line-height:1.4;">
+    <strong>Focus:</strong> Does having more amenities or newer construction raise house prices?
+  </p>
+  <ul style="margin-top:0.2rem; line-height:1.5; font-size:0.95rem;">
+    <li><b>Bathrooms</b> — number of bathrooms</li>
+    <li><b>Rooms</b> — total number of rooms</li>
+    <li><b>Fireplaces</b></li>
+    <li><b>New.Construct</b> — 1 = new construction, 0 = not new</li>
+  </ul>
+</div>
+:::
+
+::: column
+<div style="background-color:#f9f9f9; padding:1rem 1.25rem; border-radius:10px; box-shadow:0 0 8px rgba(0,0,0,0.05); margin-bottom:1rem;">
+  <div style="font-weight:700; color:#1D3557; font-size:1.2rem; margin-bottom:0.3rem;">🌇 Location & Environmental Factors</div>
+  <p style="margin-top:0; font-size:0.95rem; line-height:1.4;">
+    <strong>Focus:</strong> Do neighbourhood and environmental factors matter?
+  </p>
+  <ul style="margin-top:0.2rem; line-height:1.5; font-size:0.95rem;">
+    <li><b>Waterfront</b> — on waterfront or not</li>
+    <li><b>Pct.College</b> — % adults with college education (proxy for affluence)</li>
+    <li><b>Sewer.Type</b> — Public, Private, or None/Unknown</li>
+  </ul>
+</div>
+
+<div style="background-color:#f9f9f9; padding:1rem 1.25rem; border-radius:10px; box-shadow:0 0 8px rgba(0,0,0,0.05);">
+  <div style="font-weight:700; color:#1D3557; font-size:1.2rem; margin-bottom:0.3rem;">🔧 Age & Structural Characteristics</div>
+  <p style="margin-top:0; font-size:0.95rem; line-height:1.4;">
+    <strong>Focus:</strong> Do older homes lose value, and does heating/cooling system influence price?
+  </p>
+  <ul style="margin-top:0.2rem; line-height:1.5; font-size:0.95rem;">
+    <li><b>Age</b> — age of the house</li>
+    <li><b>Central.Air</b> — Yes/No</li>
+    <li><b>Fuel.Type</b> — Gas, Oil, Electric</li>
+    <li><b>Heat.Type</b> — Hot Air, Hot Water, Electric, etc.</li>
+  </ul>
+</div>
+:::
+:::
+
+
+```{r include=FALSE}
+# Load data
+housing <- housing_cleaned
+
+# --- 1. Quick correlations ---
+housing %>%
+  select(price, lot_size, land_value, living_area, bedrooms) %>%
+  cor(use = "complete.obs") %>%
+  round(2)
+
+# Choosing the colour palette 
+colour_palette <- c("#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#D55E00", "#CC79A7", "#999999")
+
+# Set a consistent theme
+theme_report <- theme_minimal(base_size = 12) +
+  theme(
+    panel.grid.minor = element_blank(),
+    panel.grid.major = element_line(linewidth = 0.3, colour = "#D6D6D6"),
+    axis.title = element_text(face = "bold"),
+    plot.title = element_text(face = "bold", size = 14, margin = margin(b=6)),
+    plot.subtitle = element_text(colour = "grey25", margin = margin(b = 8)),
+    legend.position = "top",
+    legend.title = element_text(face = "bold")
+  )
+theme_set(theme_report)
+```
+
+## [1 Acreage vs. Apartments Showdown: Lots, Land, and the Cost Battle]{style="font-size:3.5rem;"}
+### [1.1 Lot Size & Living Area]{style="font-size:3rem;"}
+
+
+::: column
+```{r fig.width=6, fig.height=6}
+# Price distributions by Lot Size quartiles
+
+# Compute quartiles
+quartiles <- quantile(housing$lot_size, probs = c(0.25, 0.5, 0.75), na.rm = TRUE)
+
+# Get ranges for dynamic placement
+x_range <- range(housing$price, na.rm = TRUE)
+y_max <- max(housing$lot_size, na.rm = TRUE)
+
+housing %>%
+  ggplot(aes(x = price, y = lot_size)) +
+  
+  # Scatter points
+  geom_point(color = "black", alpha = 0.7, size = 3) +
+  
+  # Quartile boundary lines
+  geom_hline(yintercept = quartiles[1], linetype = "dashed", color = colour_palette[1], linewidth = 0.9) +
+  geom_hline(yintercept = quartiles[2], linetype = "dashed", color = colour_palette[2], linewidth = 0.9) +
+  geom_hline(yintercept = quartiles[3], linetype = "dashed", color = colour_palette[3], linewidth = 0.9) +
+  
+  # --- Custom legend-like boxes at top (dynamic placement) ---
+  annotate("rect",
+           xmin = x_range[1] + 0.05 * diff(x_range),
+           xmax = x_range[1] + 0.08 * diff(x_range),
+           ymin = y_max * 1.05, ymax = y_max * 1.08,
+           fill = colour_palette[1], color = NA) +
+  annotate("rect",
+           xmin = x_range[1] + 0.35 * diff(x_range),
+           xmax = x_range[1] + 0.38 * diff(x_range),
+           ymin = y_max * 1.05, ymax = y_max * 1.08,
+           fill = colour_palette[2], color = NA) +
+  annotate("rect",
+           xmin = x_range[1] + 0.65 * diff(x_range),
+           xmax = x_range[1] + 0.68 * diff(x_range),
+           ymin = y_max * 1.05, ymax = y_max * 1.08,
+           fill = colour_palette[3], color = NA) +
+  
+  annotate("text",
+           x = x_range[1] + 0.09 * diff(x_range),
+           y = y_max * 1.065,
+           label = "1st Quartile (25%)",
+           hjust = 0, size = 4) +
+  annotate("text",
+           x = x_range[1] + 0.39 * diff(x_range),
+           y = y_max * 1.065,
+           label = "Median (50%)",
+           hjust = 0, size = 4) +
+  annotate("text",
+           x = x_range[1] + 0.69 * diff(x_range),
+           y = y_max * 1.065,
+           label = "3rd Quartile (75%)",
+           hjust = 0, size = 4) +
+  
+  # Axes and labels
+  scale_x_continuous(labels = dollar) +
+  labs(
+    title = "Price vs Lot Size with Quartile Boundaries",
+    subtitle = "Dashed lines show 25th, 50th, and 75th percentiles of Lot Size",
+    x = "Price ($)",
+    y = "Lot Size (unit)"
+  ) +
+  
+  # Theme
+  theme_minimal(base_size = 9) +
+  theme(
+    plot.title = element_text(face = "bold"),
+    plot.subtitle = element_text(size = 11),
+    plot.margin = margin(20, 15, 25, 15)
+  ) +
+  
+  # Allow drawing outside plot
+  coord_cartesian(clip = "off")
+
+```
+:::
+
+::: column
+```{r fig.width=6, fig.height=6}
+
+ggplot(housing, aes(x = price, y = living_area)) +
+  geom_point(alpha = 0.45, size = 1, colour = colour_palette[3]) +
+  geom_smooth(method = "lm", se = TRUE,
+              colour = colour_palette[1],
+              fill   = scales::alpha(colour_palette[1], 0.20)) +
+  scale_x_continuous(labels = scales::dollar) +
+  scale_y_continuous(labels = scales::label_comma()) +
+  labs(
+    title = "Does Living Area Drive Price?",
+    subtitle = "Scatterplot with linear fit",
+    x = "Price",
+    y = "Living Area"
+  )
+
+```
+:::
+:::::
+
+## [1.2 Bedrooms & Land Value]{style="font-size:3.5rem;"}
+
+::: column
+```{r fig.width=6, fig.height=6}
+
+ggplot(housing, aes(x = factor(bedrooms), y = price)) +
+  geom_boxplot(fill = colour_palette[1], alpha = 0.6) +
+  scale_y_continuous(labels = scales::dollar) +
+  labs(title = "Price Distribution by Bedrooms",
+       x = "Bedrooms", y = "Price")
+```
+:::
+
+::: column
+```{r fig.width=6, fig.height=6}
+
+cor_val <- round(cor(housing$price, housing$land_value,
+                     use = "complete.obs"), 2)
+
+
+ggplot(housing, aes(x = price, y = land_value)) +
+  geom_point(color = colour_palette[2], alpha = 0.6, size = 1.2) +
+
+  
+  geom_smooth(method = "lm", se = TRUE,
+              color = "#999999", fill = "#D55E00", alpha = 0.2) +
+
+  
+  annotate("text",
+           x = Inf, y = Inf,                     # top-right corner
+           label = paste("r =", cor_val),
+           hjust = 1.1, vjust = 1.5,
+           size = 5, color = "#999999", fontface = "bold") +
+
+  
+  labs(x = "Price ($)",
+       y = "Land Value ($)",
+       title = "Land Value vs. Price") +
+
+  
+  scale_x_continuous(labels = dollar_format()) +
+  scale_y_continuous(labels = dollar_format())
+
+```
+:::
+
+:::
+
+## [1.3 In conclusion,]{style="font-size:3.5rem;"}
+
+::::: {style="display:flex; align-items:center; justify-content:space-between; gap:40px;"}
+<!-- LEFT SIDE: graph -->
+
+::: {style="flex:1;"}
+```{r, echo=FALSE, message=FALSE, warning=FALSE, fig.width=5.5, fig.height=4, out.width="100%"}
+# Fit model quietly
+model1 <- lm(price ~ lot_size + land_value + living_area + bedrooms, data = housing)
+
+# Compute correlations
+library(ggcorrplot)
+corr_mat <- housing |>
+  dplyr::select(price, lot_size, land_value, living_area, bedrooms) |>
+  cor(use = "complete.obs")
+
+# Correlation heatmap
+ggcorrplot(corr_mat, lab = TRUE, colors = c("#E63946","#F1FAEE","#457B9D"))
+```
+:::
+
+<!-- RIGHT SIDE: text -->
+
+::: {style="flex:1; font-size:1.1rem; line-height:1.5;"}
+-   Living Area and Bedrooms are moderately correlated (≈ 0.66), suggesting overlap.
+-   Land Value and Living Area are related (≈ 0.42) but both add explanatory power.
+-   Overall, Living Area and Land Value dominate housing price variation, while Lot Size contributes little once these are accounted for.
+:::
+:::::
+
+## [2.1 Amenities, Features & Qualities]{style="font-size:3.5rem;"}
+
+### The Perks Premium: Do Amenities Add Value?
+
+**Box plot on amenities**
+
+```{r, fig.width=15, fig.height=6}
+par(mfrow = c(1,2))
+
+
+boxplot(price ~ bathrooms, data = housing,
+        main = "Price vs Bathrooms",
+        xlab = "Bathrooms", ylab = "Price",
+        col = colour_palette[4])
+
+boxplot(price ~ fireplaces, data = housing,
+        main = "Price vs Fireplaces",
+        xlab = "Fireplaces", ylab = "Price",
+        col = colour_palette[3])
+```
+
+```{r}
+lm1 <- lm(price ~ bathrooms, data = housing)
+
+lm2 <- lm(price ~ fireplaces, data = housing)
+
+lm3 <- lm(price ~ rooms, data = housing)
+
+lm4 <- lm(price ~ new_construct, data = housing)
+
+int1 <- coef(lm1)[1]
+slp1 <- coef(lm1)[2]
+
+int2 <- coef(lm2)[1]
+slp2 <- coef(lm2)[2]
+
+int3 <- coef(lm3)[1]
+slp3 <- coef(lm3)[2]
+
+int4 <- coef(lm4)[1]
+slp4 <- coef(lm4)[2]
+```
+
+**Linear Regression results:**
+
+1.  $Price = `r round(int1, digits = 2)`  +  `r round(slp1, digits = 2)`Bathroom$
+
+2.  $Price = `r round(int2, digits = 2)`  +  `r round(slp2, digits = 2)`Fireplace$
+
+## [2.2 Rooms and New Construction]{style="font-size:3.5rem;"}
+
+**Box plot on Number of Rooms and Newly Constructed or not**
+
+```{r, fig.width=15, fig.height=6}
+par(mfrow = c(1,2))
+#data <- read_csv("/Users/royk/Documents/DATA2002/Individual/cleaned_housing_data.csv")
+
+boxplot(price ~ rooms, data = housing,
+        main = "Price vs Rooms",
+        xlab = "Rooms", ylab = "Price",
+        col = colour_palette[1])
+
+boxplot(price ~ fireplaces, data = housing,
+        main = "Price vs New Construction",
+        xlab = "New Construction", ylab = "Price",
+        col = colour_palette[2])
+```
+
+**Linear Regression results:**
+
+3.  $Price = `r round(int3, digits = 2)`  +  `r round(slp3, digits = 2)`Room$
+
+4.  $Price = `r round(int4, digits = 2)`  +  `r round(slp4, digits = 2)`NewConstruct$
+
+## [2.3 Multivariable regression]{style="font-size:3.5rem;"}
+
+**Multivariable linear regression**: How does the price differ when all variables are combined?
+
+```{r}
+lm5 <- lm(price ~ bathrooms + fireplaces + rooms + new_construct, data = housing)
+
+int5 <- coef(lm5)[1]
+bth <- coef(lm5)[2]
+frp <- coef(lm5)[3]
+rom <- coef(lm5)[4]
+ncs <- coef(lm5)[5]
+
+Predicted <- predict(lm5)
+
+rsq5 <- cor(housing$price, Predicted)^2
+```
+
+```{r}
+housing$Logprice <- log(housing$price)
+
+lg5 <- lm(Logprice ~ bathrooms + fireplaces + rooms + new_construct, data = housing)
+
+lgPredict <- predict(lg5)
+
+lgrsq5 <- cor(housing$Logprice, lgPredict)^2
+```
+
+::: column
+```{r, fig.width=5, fig.height=4}
+
+ggplot(housing, aes(x = Predicted, y = price)) +
+  geom_point(alpha = 0.5, color = "#CC79A7", pch=20) +
+  geom_abline(intercept = 0, slope = 1, color= "#999999") +
+  labs(title = "Actual vs Predicted House Prices",
+       x = "Predicted Price", y = "Actual Price") +
+  theme_minimal() 
+``` 
+
+
+$Predicted Price = `r round(int5, digits = 1)` + `r round(bth, digits = 1)`Bathrooms + `r round(frp, digits = 1)`Fireplaces + `r round(rom, digits = 1)`Rooms + `r round(ncs, digits = 1)` NewlyConstruct$
+
+**Log-linear regression**: Are there any outliers?
+
+$Multivariable R^2 = `r rsq5`$
+
+$LogLinear R^2 = `r lgrsq5`$
+:::
+
+::: column
+
+:::
+
+
+
+## [3.1 Environmental & Neighbourhood Factors]{style="font-size:3.2rem;"}
+
+### Beyond the Walls: Location as Value
+
+::: column
+```{r, fig.width=5, fig.height=5}
+par(mfrow = c(1,2))
+
+ggplot(housing, aes(x = price)) +
+geom_histogram(bins = 40, fill = "#E69F00", color = "white", alpha = 0.9) +
+labs(title = "Distribution of Price", x = "Price", y = "Count") +
+theme_minimal(base_size = 11)
+ 
+```
+:::
+
+::: column
+```{r, fig.width=5, fig.height=5}
+ggplot(housing, aes(x = pct_college)) +
+geom_histogram(bins = 40, fill = "#CC79A7", color = "white", alpha = 0.9) +
+labs(title = "Distribution of Pct.College (%)", x = "Pct.College (%)", y = "Count") +
+theme_minimal(base_size = 11)
+
+
+```
+:::
+
+#### Key variables
+
+-   **Waterfront** (binary: Yes/No)
+-   **Pct.College** (% college-educated residents)
+-   **Sewer.Type** (Public / Private / None-Unknown)
+
+## [3.2 Price Relationships]{style="font-size:3.5rem;"}
+
+::: column
+```{r, fig.width=5, fig.height=6}
+ggplot(housing, aes(x = waterfront, y = price, fill = waterfront)) +
+  geom_boxplot(outlier.alpha = 0.2, color = "white") +
+  scale_fill_manual(values = c("#F0E442", "#0072B2")) +
+  stat_summary(fun = "median", geom = "point", shape = 23, size = 3, fill = "white") +
+  labs(title = "Price by Waterfront", x = "Waterfront", y = "Price") +
+  theme_minimal(base_size = 11) +
+  theme(legend.position = "none")
+
+
+```
+
+#### Waterfront vs Price
+:::
+
+::: column
+```{r, fig.width=5, fig.height=6}
+ggplot(housing, aes(x = pct_college, y = price)) +
+  geom_point(alpha = 0.5, color = "#009E73") + 
+  geom_smooth(method = "lm", se = TRUE, color = "#999999", linewidth = 1) +
+  labs(title = "Price vs. Pct.College", x = "Pct.College (%)", y = "Price") +
+  theme_minimal(base_size = 11)
+
+
+```
+
+#### Neighborhood Education Quality vs Price
+:::
+
+## [3.3 In conclusion,]{style="font-size:3.5rem;"}
+
+-   T-tests show a significant waterfront premium
+
+-   Regression confirms Pct.College is a strong positive predictor of price
+
+-   ANOVA shows Public sewer systems linked to higher prices
+
+-   Combined regression: all three remain independent and significant
+
+-   Bottom Summary: Neighbourhood quality and infrastructure are systematically capitalised into housing prices.
+
+::: column
+```{r, fig.width=7, fig.height=5}
+
+bars <- tibble(
+  factor = c("Waterfront Premium", "Neighbourhood Quality", "Public Sewer"),
+  value  = c(1.0, 0.7, 0.5),
+  note   = c("Significant waterfront effect",
+             "Pct.College = strong predictor",
+             "Public sewer → higher prices")
+)
+
+p <- ggplot(bars, aes(x = factor, y = value)) +
+  geom_col(width = 0.6, fill = c("#009E73", "#999999", "#F0E442")) +
+  geom_text(aes(label = note), vjust = -0.35, size = 4) +
+  coord_cartesian(ylim = c(0, 1.25), clip = "off") +
+  labs(
+    title = "Summary of Key Statistical Findings",
+    y = "Relative Importance", x = NULL
+  ) +
+  theme_minimal(base_size = 8) +
+  theme(
+    panel.grid.major.x = element_blank(),
+    axis.text.x = element_text(size = 16),
+    plot.title = element_text(face = "bold"),
+    plot.margin = margin(5, 30, 5, 30)
+  )
+
+p
+```
+
+#### Combined Effects on Housing Price
+:::
+## [4.1 Age & Structural Characteristics vs. Price]{style="font-size:3.2rem;"}
+
+### Aging Gracefully? The Price of Time
+
+::: {.column width="60%"}
+```{r, fig.width=7, fig.height=7}
+# Create a scatter plot with loess smoothing for p_age
+p_age <- ggplot(housing, aes(x = age, y = price)) +
+  geom_point(alpha = 0.3, color = "#009E73") +
+  geom_smooth(method = "loess", color = "black", se = FALSE) +
+  labs(
+    x = "Age of House (years)",
+    y = "Price ($)",
+    title = "House Prices vs Age"
+  ) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(hjust = 0.5)
+  )
+
+# Display the plot
+p_age
+
+```
+:::
+
+::: {.column width="40%"}
+```{r, fig.width=4, fig.height=6}
+# Central Air vs Price
+p_central_air <- ggplot(housing, aes(x = central_air, y = price)) +
+  geom_boxplot(fill = "#F0E442", colour = "black", alpha = 0.7) +
+  stat_summary(fun = mean, geom = "point", size = 2, colour = "#0072B2") +
+  stat_summary(fun = mean, geom = "line", aes(group = 1),
+               linetype = "dashed", linewidth = 0.8, colour = "#0072B2") +
+  labs(x = "Central Air", y = "Price ($)", title = "Price by Central Air") +
+  theme_minimal() +
+  theme(plot.title = element_text(hjust = 0.5))
+
+p_central_air
+
+```
+:::
+
+## [4.2 Fuel Type & Heat Type]{style="font-size:3.5rem;"}
+
+::: column
+```{r, fig.width=5, fig.height=6}
+# Fuel Type vs Price
+p_fuel_type <- ggplot(housing, aes(x = fuel_type, y = price)) +
+  geom_boxplot(fill = "#0072B2", colour = "black", alpha = 0.7) +
+  stat_summary(fun = mean, geom = "point", size = 2, colour = "#F0E442") +
+  stat_summary(fun = mean, geom = "line", aes(group = 1),
+               linetype = "dashed", linewidth = 0.8, colour = "#F0E442") +
+  labs(x = "Fuel Type", y = "Price ($)", title = "Price by Fuel Type") +
+  theme_minimal() +
+  theme(plot.title = element_text(hjust = 0.5))
+p_fuel_type
+```
+:::
+
+::: column
+```{r, fig.width=5, fig.height=6}
+# Heat Type vs Price
+p_heat_type <- ggplot(housing, aes(x = heat_type, y = price)) +
+  geom_boxplot(fill = "#CC79A7", colour = "black", alpha = 0.7) +
+  stat_summary(fun = mean, geom = "point", size = 2, colour = "#F0E442") +
+  stat_summary(fun = mean, geom = "line", aes(group = 1),
+               linetype = "dashed", linewidth = 0.8, colour = "#F0E442") +
+  labs(x = "Heat Type", y = "Price ($)", title = "Price by Heat Type") +
+  theme_minimal() +
+  theme(plot.title = element_text(hjust = 0.5))
+
+
+p_heat_type
+```
+:::
+
+## [4.3 In conclusion,]{style="font-size:3.5rem;"}
+
+
+
+```{r, fig.width=10, fig.height=6}
+
+# Standardize numeric variables
+housing_std <- housing %>%
+  mutate(across(c(age, price), scale))
+
+# Fit linear model
+model <- lm(price ~ age + central_air + fuel_type + heat_type, data = housing)
+
+# Tidy model output
+coef_data <- tidy(model) %>%
+  filter(term != "(Intercept)") %>%
+  mutate(effect = ifelse(estimate > 0, "Positive", "Negative"))
+
+# Conclusion plot
+p_conclusion <- ggplot(coef_data, aes(x = reorder(term, estimate), y = estimate, fill = effect)) +
+  geom_col(width = 0.6) +
+  geom_text(aes(label = round(estimate, 2),
+                hjust = ifelse(estimate > 0, -0.1, 1.1))) +
+  coord_flip() +
+  scale_fill_manual(values = c("Positive" = "#009E73", "Negative" = "#E69F00")) +
+  labs(
+    title = "Negative & Positive Factors",
+    x = "Feature",
+    y = "Standardized Effect on Price",
+    fill = "Direction"
+  ) +
+  theme_minimal(base_size = 12)
+
+p_conclusion
+
+
+
+
+
+```
+
+
+
+## [5.1 Cross Group Analysis]{style="font-size:3.5rem;"}
+
+```{r data-wrangling}
+df <- readr::read_csv("/Users/royk/Documents/DATA2002/Individual/cleaned_housing_data.csv")
+df_mutated <- na.omit(df)
+
+dummy_fuel <- model.matrix(~ Fuel.Type - 1, data=df_mutated)
+dummy_heat <- model.matrix(~ Heat.Type - 1, data=df_mutated)
+dummy_sewer <- model.matrix(~ Sewer.Type - 1, data=df_mutated)
+
+df_encoded <- cbind(
+  df_mutated[, sapply(df_mutated, is.numeric)],
+  dummy_fuel, dummy_heat, dummy_sewer
+)
+```
+
+```{r corr-mat}
+cor_mat = cor(df_encoded)
+rcorr_mat = rcorr(as.matrix(df_encoded))
+
+r_mat = rcorr_mat$r
+r_mat[lower.tri(r_mat, diag=TRUE)] <- NA
+df_r <- as.data.frame(as.table(r_mat))
+
+p_mat = rcorr_mat$P
+p_mat[lower.tri(p_mat, diag=TRUE)] <- NA
+df_p <- as.data.frame(as.table(p_mat))
+```
+
+```{r, fig-5-vis-corr, out.width="100%", fig.align="center", fig.cap="Correlation Matrix of each pair of variables"}
+corrplot(cor_mat, tl.col="black", tl.srt=45, tl.cex = 0.5, cl.cex=0.6, type="upper", method="color", mar=c(0, 0, 0, 0), col=colorRampPalette(c("#E69F00","#F1FAEE","#009E73"))(100)) # 100 steps should suffice
+```
+
+
+
+## [5.2 Investigation Assumptions]{style="font-size:3.5rem;"}
+
+```{r, fig-5-vis-assump, out.width="70%", fig.align="center", fig.cap="Assumptions plots before and after log transformation"}
+df_encoded$log.Price <- log(df_encoded$Price)
+
+model_assump <- lm(Price ~ Living.Area + Bathrooms, data=df_encoded)
+sced <- df_encoded |> ggplot(aes(x=fitted(model_assump), y=resid(model_assump))) +
+  geom_point() +
+  geom_smooth(method="lm", se=F) +
+  theme_bw()
+qq <- df_encoded |> ggplot(aes(sample=resid(model_assump))) +
+  geom_qq(color="#E69F00", alpha = 0.6) +
+  geom_qq_line(color="#999999") +
+  labs(title="QQPlot of Original Model", x="Theoretical", y="Sample") +
+  theme_bw()
+
+model_assump_log <- lm(log.Price ~ Living.Area + Bathrooms, data=df_encoded)
+sced_log <- df_encoded |> ggplot(aes(x=fitted(model_assump_log), y=resid(model_assump_log))) +
+  geom_point() +
+  geom_smooth(method="lm", se=F) +
+  theme_bw()
+qq_log <- df_encoded |> ggplot(aes(sample=resid(model_assump_log))) +
+  geom_qq(color="#E69F00", alpha = 0.6) +
+  geom_qq_line(color="#999999") +
+  labs(title="QQPlot of Log-Adjusted Model", x="Theoretical", y="Sample") +
+  theme_bw()
+
+#(sced / qq) | (sced_log / qq_log)
+qq | qq_log
+```
+
+::: {.notes}
+Plotting the linear model and qqplot, we can see moderate flaring at the ends of the qqplot. To compensate for this we attempt a log-scale on `Price`.
+
+With the adjusted model we can see that the residuals more closely fit the qqline as well as in the residual plot itself with a tighter spread centered around the line and fewer outliers, visually indicating normality and homoscedasticity.
+:::
+
+
+## [5.3 Findings]{style="font-size:3.5rem;"}
+
+```{r functions}
+fn_fmt_coeff <- function(val) {
+  if (val >= 0.01) {
+    return(round(val, 2))
+  }
+  
+  res <- formatC(val, format="e", digits=2)
+  res <- gsub("e([+-])?(\\d+)", "\\\\times 10^{\\1\\2}", res)
+  #res <- gsub("10\\^{([+-])?0*(\\d+)}", "10^{\\1\\2}", res)
+  
+  return(res)
+}
+
+fn_fmt_eqn <- function(summ) {
+  coeffs <- summ$coefficients
+  estims <- coeffs[, "Estimate"]
+  eqn <- paste0("$\\text{Predicted Price}=", fn_fmt_coeff(estims[1]))
+  
+  for (i in 2:length(estims)) {
+    coeff <- estims[i]
+    eqn <- paste0(
+      eqn,
+      if (coeff >= 0) "+" else "",
+      fn_fmt_coeff(coeff),
+      "\\cdot ",
+      paste0(
+        "\\text{",
+        rownames(coeffs)[i],
+        "}"
+      )
+    )
+  }
+  
+  eqn <- paste0(eqn, "$")
+  
+  return(eqn)
+}
+
+# maybe add pvalue output to this later
+fn_fmt_res <- function(summ, label) {
+  out <- paste(
+    paste0(
+      paste0("**", label, ":** "),
+      paste(
+        paste0("R-squared: ~$", round(summ$r.squared, 2), "$"),
+        paste0("Adjusted R-Squared: ~$", round(summ$adj.r.squared, 2), "$"),
+        sep=", "
+      )
+    ),
+    fn_fmt_eqn(summ),
+    "",
+    sep="\n\n"
+  )
+  
+  return(out)
+}
+```
+
+```{r, fig-5-vis-logadj, out.width="100%", fig.align="center", fig.cap="Log-Adjusted Summary", results="asis"}
+summ_assump_log <- summary(model_assump_log)
+
+cat(fn_fmt_res(summ_assump_log, "Log-Adjusted Model"))
+```
+
+```{r, fig-5-vis-simpcomp, out.width="100%", fig.align="center", fig.cap="Simple Comparison Summary", results="asis"}
+model_comp_log <- lm(log.Price ~ Living.Area, data=df_encoded)
+summ_comp_log <- summary(model_comp_log)
+
+cat(fn_fmt_res(summ_comp_log, "Simple Comparison Model"))
+```
+
+```{r, fig-5-vis-interact, out.width="100%", fig.align="center", fig.cap="Interactions Summary", results="asis"}
+model_interact_log <- lm(log.Price ~ Living.Area * Bathrooms, data=df_encoded)
+summ_interact_log <- summary(model_interact_log)
+
+cat(fn_fmt_res(summ_interact_log, "Interaction Model"))
+
+interact_plot(model_interact_log, pred=Living.Area, modx=Bathrooms)
+```
+
+```{r, fig-5-vis-vif}
+# REMOVE IF TOO OUT OF PLACE
+
+model_vif <- vif(model_assump_log)
+
+cat("Log-Adjusted VIF:\n\n")
+model_vif
+```
+
+::: {.notes}
+Examining the `p-value`s in the multiple regression, we see observe a relatively larger `p-value` for `Bathrooms` compared to `Living.Area` although both are significantly low in absolute terms. Comparing with a simple regression on just `Living.Area` we find that the $r^2$ values are very similar absolutely (diff~`r round(abs(summ_assump_log$r.squared - summ_comp_log$r.squared), 2)`) and in proximity with their adjusted $r^2$'s, which suggests that although `Bathrooms` does play a part in the model, its effect is far weaker than that of `Living.Area`.
+
+However the interaction model paints a slightly different picture, with the plot tapering at the top. The `p-value` of the interaction between `Living.Area` and `Bathrooms` at `r round(summ_interact_log$coefficients[4, 4], 2)` suggests that it is a significant interaction term although small, with the interaction summary likewise finding the `p-value` for `Bathrooms` being magnitudes larger than `Living.Area`'s.
+
+Peeking at the VIF of our model, we see that there it does not suggest any significant multicollinearity issues, corroborating with our findings.
+:::
+
+
+## [Conclusion]{style="font-size:3.5rem;"}
+
+```{r}
+latest <- read_csv("/Users/royk/Documents/DATA2002/Individual/cleaned_housing_data.csv")
+```
+
+```{r}
+
+latest$LogPrice <- log(latest$Price)
+
+lgw <- lm(LogPrice ~ Lot.Size + Land.Value + Living.Area + Bedrooms + Bathrooms + Fireplaces + Rooms + New.Construct + Waterfront + Pct.College + Sewer.Type + Age + Central.Air + Fuel.Type + Heat.Type, data = latest)
+
+lgw_beta <- lm.beta(lgw)
+coefs <- tidy(lgw_beta)
+
+coefs_pct <- coefs[-1, ] %>%
+  mutate(PctInfluence = (exp(std_estimate) - 1) * 100,
+  Significant = ifelse(p.value < 0.05, "Yes", "No"))
+
+lgwrsq <- summary(lgw)$r.squared
+```
+
+```{r fig.width=12, fig.height=7}
+
+ggplot(coefs_pct, aes(x = reorder(term, PctInfluence), y = PctInfluence, fill = Significant)) +
+  geom_col(alpha=0.9) +
+  geom_text(aes(label = paste0(round(PctInfluence, 2), "%")), vjust = -0.5) +
+  scale_fill_manual(values = c("Yes" = "#009E73", "No" = "#999999")) +
+  labs(title = "% Influence of Factors on Price",
+       x = "Variable", y = "% Change in Price per 1 SD Increase", fill = "Significant (p<0.05)") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        legend.position = c(0.01, 0.95),   
+        legend.justification = c(0, 1))
+
+```
+
+$R^2=`r lgwrsq`$
+
+
+## <span style="font-size:3.5rem;">Top 5 Biggest Factors</span>
+
+```{r}
+
+
+lmt <- lm(Price ~ Living.Area + Land.Value + Bathrooms + Waterfront + Lot.Size, 
+          data = latest)
+
+latest$Predicted <- predict(lmt)
+
+rsq <- cor(latest$Price, latest$Predicted, use = "complete.obs")^2
+
+latest$LogPrice <- log(latest$Price)
+
+lgt <- lm(LogPrice ~ Living.Area + Land.Value + Bathrooms + Waterfront + Lot.Size, 
+          data = latest)
+
+latest$lgtPredict <- predict(lgt)
+
+lgtrsq <- cor(latest$LogPrice, latest$lgtPredict, use = "complete.obs")^2
+
+int <- coef(lmt)[1]
+lar <- coef(lmt)[2] * 1000      # effect of 1000 extra sq ft
+lvl <- coef(lmt)[3] * 10000     # effect of $10,000 more land value
+bth <- coef(lmt)[4]
+wft <- coef(lmt)[5]
+lsz <- coef(lmt)[6]
+
+# Print R-squared values
+#cat("R-squared (linear model): ", round(rsq, 4), "\n")
+#cat("R-squared (log model):    ", round(lgtrsq, 4), "\n")
+```
+
+:::{.column width="70%"}
+```{r, fig.width=5, fig.height=4}
+
+ggplot(latest, aes(x = Predicted, y = Price)) +
+  geom_point(alpha = 0.5, color = "#009E73", pch=20) +
+  geom_abline(intercept = 0, slope = 1, color= "#1D3557") +
+  labs(title = "Actual vs Predicted House Prices",
+       x = "Predicted Price", y = "Actual Price") +
+  theme_minimal()
+
+```
+
+:::
+
+:::{.column width="30%"}
+
+* Living Area / 1000$ft^2$
+* Land Value / 10000$
+* Bathrooms
+* Waterfront
+* Lot Size
+
+:::
+
+$Predicted Price = `r round(int, digits = 1)` + `r round(lar, digits = 1)` Living.Area + `r round(lvl, digits = 1)` Land Value + `r round(bth, digits = 1)` Bathrooms + `r round(wft, digits = 1)` Waterfront + `r round(lsz, digits = 1)` Lot.Size$
+
+$MultiVarR^2=`r rsq`$
+
+$LogLinearR^2=`r lgtrsq`$
+
+## 
+<div style="height:100vh; display:flex; flex-direction:column; justify-content:space-between; align-items:center; text-align:center;">
+
+  <!-- Header -->
+  <div style="margin-top:10px; font-size:1.1rem; font-weight:500;">
+    DATA2002 • Semester 2 • GROUP L21G03
+  </div>
+
+  <!-- Title block -->
+  <div> <h1 style="font-size:3.5rem; margin-bottom:0.5rem;">The City of Dreams</h1> <h3 style="font-weight:400; font-size:1.5rem; font-style:italic; margin-top:0;"> Our analysis confirms: The only way to afford a 2-bedroom apartment in Manhattan is if you are a fictional character from a 90s sitcom or the result of a statistically improbable outlier. </h3> <h4 style="margin-top:1rem; font-weight:500;">GROUP L21G03</h4>
+  </div>
+
+  <!-- Bottom image -->
+  <div style="width:160%; margin-bottom:-40px;"> <img src="Fig1.png" alt="City skyline"
+    style="width:300%; object-fit:width; display:block;">
+  </div>
+
+</div>
+
+
+
+
